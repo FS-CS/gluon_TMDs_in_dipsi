@@ -1,0 +1,155 @@
+c TO RUN THE SCRIPT, USE COMMAND : gfortran -fopenmp evol_Sfac_thint_Sudakov_sensi_analysis_nonmod_150918.for && ./a.out
+
+C REQUIRED FILES : running_test_100818.for, tmd_convols_090818.f, tmd_sudakovs_090818.f, tmd_scales_090818.f, shared_vars.mod, F100_ctheta_evol_130818.f', F20_ctheta_evol_130818.f', F300a_ctheta_evol_130818.f', F300b_ctheta_evol_130818.f', F40_ctheta_evol_130818.f'
+c REQUIRED PACKAGES : dcadredo, MSTW2008
+
+
+      include 'par_est_nonmod.f'
+
+
+      program jpsijpsi_sensi_par_nonmod
+      use omp_lib
+      implicit none
+
+      double precision qtmin,dqt,qtmax,Nc,nf,btmax,b0,Q0,Lambda,pi,M,
+     &R0Jpsi,phid,precision,amin,amax,bmin,bmax,cmin,cmax,x1,x2,xxpdf,Q,
+     &qt
+      double precision ctmin,ctmax
+      double precision R0,R2a,R2b,R4,F1Cff,Cff
+      double precision V1Cff,S1Cff,meanCff,varCff,acc
+      integer Nsamp,dps,imain,jmain
+
+      double precision Qlist(3), qtlist(106)
+
+      common /Nc/ Nc
+      common /nf/ nf
+      common /btmax/ btmax
+      common /b0/ b0
+      common /Q0/ Q0
+      common /Lambda/ Lambda
+      common /pi/ pi
+      common /M/ M
+      common /R0Jpsi/ R0Jpsi
+      common /phid/ phid
+      common /precision/ precision
+      common /amin/ amin
+      common /amax/ amax
+      common /bmin/ bmin
+      common /bmax/ bmax
+      common /cmin/ cmin
+      common /cmax/ cmax
+      common /x1/ x1
+      common /x2/ x2
+      common /xxpdf/ xxpdf
+      common /Q/ Q
+      common /qt/ qt
+      common /Nsamp/ Nsamp
+      common /dps/ dps
+
+c      external Cff
+
+
+      Nc = 3d0
+      nf = 5d0
+      btmax = 1.5d0
+      b0 = 1.12292d0
+      Q0 = 1d0
+      Lambda = 0.217d0
+      pi = dacos(-1.d0)
+      M=3.0969d0
+      R0Jpsi=sqrt(0.81d0)
+      phid=0d0
+
+      precision=1d-2
+
+      Qlist=(/8d0,12d0,21d0/)
+
+      qtmin=0d0
+      dqt=2d0
+
+      amin=0.5d0
+      amax=2d0
+      bmin=0.5d0
+      bmax=2d0
+      cmin=1d0
+      cmax=1d0
+
+
+      write(6,*) char(10),'---------------------------------------------
+     &---------------------',char(10),char(9),'UNPOLARISED DOUBLE J/psi 
+     &Sthint WITH EVOLVED TMDs',char(10),'------------------------------
+     &------------------------------------',char(10)
+
+
+
+      x1=1d-2
+      x2=1d-2
+      write(6,*) 'x1=',x1,char(9),'x2=',x2,char(10)
+      xxpdf=x1*x2
+
+
+      Q=8d0
+      qt=0d0
+      Nsamp=1
+      dps=3
+      acc=0.02d0
+
+      call convSi(2,acc,V1Cff,S1Cff,meanCff,varCff)
+
+
+c      do imain = 1, size(qtlist)
+
+c         qtlist(imain)=(qtmin+(imain-1)*dqt)
+
+c      end do
+
+
+c      do imain = 1, size(Qlist)
+
+c         Q = Qlist(imain)
+c         qtmax=Q/2d0
+c         write(6,*) char(10),'---------------',char(10),' Q = ',Q,' GeV'
+
+
+c WE ONLY DO ONE MODEL RIGHT NOW WITH Snp'
+
+c         do jmain = 1, size(qtlist)
+
+c            qt=qtlist(jmain)
+
+c            if (qt.le.qtmax) then
+
+c               F1Cff=Cff(qt)
+c               F1Cff=fftheta_int(ctmin,ctmax)*Cff(qt)
+c               S01thint(i,j)=R0*Chh(qt)/Cff(qt)
+c               S02thint(i,j)=R0*Chh2(qt)/Cff(qt)
+c               S21thint(i,j)=R2a*Cw3afh(qt)/Cff(qt)
+c     &         +R2b*Cw3bhf(qt)/Cff(qt)
+c               S22thint(i,j)=R2*Cw3fh2(qt)/Cff(qt)
+c               S41thint(i,j)=R4*Cw4hh(qt)/Cff(qt)
+c               S42thint(i,j)=R4*Cw4hh2(qt)/Cff(qt)
+
+c               write(6,15) qt,S01thint(imain,jmain),S02thint(imain,jmain),S21thint(imain,jmain)
+c     &         ,S22thint(imain,jmain),S41thint(imain,jmain),S42thint(imain,jmain)
+
+c               write(6,15) qt,F1Cff
+c     &         ,S01thint(imain,jmain),S21thint(imain,jmain),S41thint(imain,jmain)
+
+c               else
+
+c                  goto 10
+
+c               end if
+
+c 10      end do
+
+c      end do
+
+
+
+ 15   format(8(1pe13.5,2x))
+
+      end program jpsijpsi_sensi_par_nonmod
+
+
+

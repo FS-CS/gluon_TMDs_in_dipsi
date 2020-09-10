@@ -1,0 +1,7 @@
+      double precision function F40func(ctheta)
+         implicit none
+         double precision, intent(in) :: ctheta
+         double precision F40
+         F40=<* F402J\[Psi]\[Alpha] *>
+         F40func=F40
+      end function F40func

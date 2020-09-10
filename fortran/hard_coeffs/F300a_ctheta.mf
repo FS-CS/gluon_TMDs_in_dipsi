@@ -1,0 +1,7 @@
+      double precision function F300afunc(ctheta)
+         implicit none
+         double precision, intent(in) :: ctheta
+         double precision F300a
+         F300a=<* -F3002J\[Psi]a\[Alpha] *>
+         F300afunc=F300a
+      end function F300afunc

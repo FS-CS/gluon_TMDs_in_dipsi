@@ -1,0 +1,59 @@
+
+      include 'tmd_scales_110918.f'
+
+
+      double precision function Sa(bt)
+      implicit none
+
+      double precision mu,muint,bt,mubfrozen,mub,nf,Nc,Q,Lambda
+
+      common /nf/ nf
+      common /Nc/ Nc
+      common /Q/ Q
+      common /Lambda/ Lambda
+
+      external mub,mubfrozen
+
+      mu = mubfrozen(bt)
+      muint = mub(bt)
+
+      Sa = -1d0/(2d0*nf-33d0)*(6d0*Nc*log(mu**2)+(2d0*nf-11d0*Nc-12d0*
+     &Nc*log(Lambda))*log(log(Q**2)-2d0*log(Lambda))-6d0*Nc*log(Lambda)*
+     &log(1d0/(log(mu**2)-2d0*log(Lambda)))+6d0*Nc*log(Q**2)*(log(log(
+     &Q**2)-2d0*log(Lambda))-log(log(mu**2)-2d0*log(Lambda))-1d0)+(11d0
+     &*Nc-2d0*nf+6d0*Nc*log(Lambda))*log(log(mu**2)-2d0*log(Lambda))-
+     &6d0*Nc*log(Q**2/mu**2)*log(log(muint**2/Lambda**2)/log(mu**2/
+     &Lambda**2)))
+
+      end
+
+
+      double precision function Snp(bt)
+      implicit none
+
+      double precision bt,Q,xxpdf
+
+      common /Q/ Q
+      common /xxpdf/ xxpdf
+
+
+c   Ca/Cf=3/(4/3)=9/4 : : the fit of Snp was made for quarks, so we scale it by a factor Ca/Cf to apply it to gluons
+
+      Snp = 9d0/4d0*(0.184d0*log(Q/(2d0*1.6d0))+0.201d0*(1d0+2d0*
+     &(-0.129d0)*log(0.09d0*xxpdf/(0.009d0+xxpdf))))*bt**2
+
+      end
+
+
+      double precision function Snp2(bt)
+      implicit none
+
+      double precision bt,btmax,Q,Q0
+
+      common /btmax/ btmax
+      common /Q/ Q
+      common /Q0/ Q0
+
+      Snp2 = (sqrt(bt**2+btmax**2)-btmax)*log(Q**2/Q0**2)
+
+      end

@@ -1,0 +1,7 @@
+      double precision function F20func(ctheta)
+         implicit none
+         double precision, intent(in) :: ctheta
+         double precision F20
+         F20=<* F202J\[Psi]\[Alpha] *>
+         F20func=F20
+      end function F20func

@@ -1,0 +1,15 @@
+      double precision function F300bfunc(ctheta)
+         use shared_vars
+         implicit none
+         double precision, intent(in) :: ctheta
+         double precision Q
+         double precision M,pi,R0Jpsi,phid
+         double precision F300b
+         COMMON /Q/Q
+         pi=dacos(-1.d0)
+         M=3.0969d0
+         R0Jpsi=sqrt(0.81d0)
+         phid=0d0
+         F300b=<* -F3002J\[Psi]b\[Alpha] *>
+         F300bfunc=F300b
+      end function F300bfunc

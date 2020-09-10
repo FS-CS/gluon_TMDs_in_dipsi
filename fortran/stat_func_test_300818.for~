@@ -1,0 +1,758 @@
+
+      program stat_func_test
+      implicit none
+
+
+      integer :: seed
+      integer i,j,k,N,d,niter
+      double precision meanfA,meanfB,meanfAB1,meanAll,varfA,varfB,
+     &varfAB1,varAll
+      double precision Q0,Q0min,Q0max,Q0norm
+      double precision b0,b0min,b0max,b0norm
+      double precision btmax,btmaxmin,btmaxmax,btmaxnorm
+      double precision norm, revnorm, Vi, Vti, Vij, model
+      double precision, allocatable :: fA(:),fB(:),fAB1(:),fAB2(:),
+     &fAB3(:)
+      double precision V1,S1,V2,S2,V3,S3,Vt1,St1,Vt2,St2,Vt3,St3,V12,S12
+     &,V13,S13,V23,S23
+
+
+c   generation of normalised random numbers (i.e. between 0 and 1) using a randomised seed (fixed seed => fixed "random" numbers since they come from a pseudorandom sequence) thanks to the CPU clock. Randomised seed allows to re-run the program with different values each time
+
+      call system_clock(seed)
+      seed=int(seed)
+      write(*,*) 'seed=',seed
+      call srand(seed)
+
+
+c   seed that gives quick convergence
+
+c      seed=395946647
+
+
+c   minimal and maximal values for our uncertain model parameters : Q0, b0, btmax => d=3
+
+      Q0min=0.5d0
+      Q0max=2d0
+      b0min=1.123/2d0
+      b0max=1.123*2d0
+      btmaxmin=0.75d0
+      btmaxmax=2d0
+
+
+      N=10000   ! initial number of sample points taken in the normalised phase-space for the analysis, ans also number of sample point for each increment in the convergence-computation of the estimators
+
+      d=3   ! dimensions of the phase-space (i.e. number of uncertain model parameters) (for d!=3, other changes need to be made manually in the code as the number of arrays in the Sobol sequence is related to d)
+
+
+      write (*,*) 'N=',N,',   d=',d,char(10)
+
+
+
+c   tests on means and variances
+
+      allocate(fA(N),fB(N),fAB1(N),fAB2(N),fAB3(N))
+
+      call Sobolseqij(fA,fB,fAB1,fAB2,fAB3,N,d)
+
+      meanfA=sum(fA)/N
+      write(*,*) 'mean on f(A)=',meanfA
+
+      meanfB=sum(fB)/N
+      write(*,*) 'mean on f(B)=',meanfB
+
+      meanfAB1=sum(fAB1)/N
+      write(*,*) 'mean on f(AB1)=',meanfAB1
+
+      meanAll=sum(fA+fB+fAB1+fAB2+fAB3)/(5*N)
+      write(*,*) 'mean on all points=',meanAll
+
+      varfA=sum((fA-meanfA)**2)/N
+      write(*,*) 'variance on fA=',varfA
+
+      varfB=sum((fB-meanfB)**2)/N
+      write(*,*) 'variance on fB=',varfB
+
+      varfAB1=sum((fAB1-meanfAB1)**2)/N
+      write(*,*) 'variance on fAB1=',varfAB1
+
+      varAll=sum((fA-meanAll)**2+(fB-meanAll)**2+(fAB1-meanAll)**2+(fAB2
+     &-meanAll)**2+(fAB3-meanAll)**2)/(5*N)
+      write(*,*) 'variance on all points=',varAll
+
+
+      call convSi(1,N,d,0.01d0,V1,S1,meanAll,varAll)
+      call convSi(2,N,d,0.01d0,V2,S2,meanAll,varAll)
+      call convSi(3,N,d,0.01d0,V3,S3,meanAll,varAll)
+
+      call convSti(1,N,d,0.01d0,Vt1,St1,meanAll,varAll)
+      call convSti(2,N,d,0.01d0,Vt2,St2,meanAll,varAll)
+      call convSti(3,N,d,0.01d0,Vt3,St3,meanAll,varAll)
+
+      call convSij(1,2,N,d,0.01d0,V12,S12,meanAll,varAll)
+      call convSij(1,3,N,d,0.01d0,V13,S13,meanAll,varAll)
+      call convSij(2,3,N,d,0.01d0,V23,S23,meanAll,varAll)
+
+
+c   test of conversion from normalised values 0<Q0norm<1 to real values Q0min<Q0<Q0max using function revnorm
+
+c      write(6,*) '  Q0norm',char(9),char(9),char(9),'Q0'
+
+c      do i = 1, 10
+
+c         Q0norm=rand()
+c         Q0=revnorm(Q0norm,Q0min,Q0max)
+c         write(6,*) Q0norm,Q0
+
+c      end do
+
+
+ 13   format(' ',9f8.3)
+ 14   format(' ',f15.3)
+ 15   format(8(1pe13.5,2x))
+ 16   format(8(1pe10.2,2x))
+
+
+c*******************************************
+
+
+c   had to put the subroutines Sobolseqi & Sobolseqij in the main because couldn't allocate internal arrays using input variables
+
+      contains
+
+
+c   generation of the arrays A,B,AB1,AB2,AB3 for the Sobol sequence : A & B are two arrays containing a sample of N points of the normalised phase-space (of dimension d=3 in this case), while the ABi are a different mix of A & B's columns (respectively BAA,ABA,AAB), the whole of them forming a low-discrepancy sequence
+
+c   subroutine generating and additional Sobol sequence of Np sample points and applying the model to it when only one of the ABi arrays is needed (ip = number of the array ABip which is 1, 2 or 3 when d=3) i.e. for computation of the Vi's and Vti's alone => economy of times we must run the model
+
+      subroutine Sobolseqi(fAloc,fBloc,fABiploc,ip,Np,d)
+      implicit none
+
+      integer, intent(in) :: Np,d,ip
+      integer i,j
+      double precision model
+      double precision, dimension(Np), intent(out) :: fAloc,fBloc,
+     &fABiploc
+      double precision, dimension(Np,d) :: Aploc,Bploc,ABiploc
+
+      external model
+
+      do i=1,Np
+
+         do j=1,d
+
+            Aploc(i,j)=rand()
+            Bploc(i,j)=rand()
+
+         end do
+
+      end do
+
+      if (ip==1) then
+
+         ABiploc(:,1)=Bploc(:,1)
+         ABiploc(:,2)=Aploc(:,2)
+         ABiploc(:,3)=Aploc(:,3)
+
+      else if (ip==2) then
+
+         ABiploc(:,1)=Aploc(:,1)
+         ABiploc(:,2)=Bploc(:,2)
+         ABiploc(:,3)=Aploc(:,3)
+
+      else if (ip==3) then
+
+         ABiploc(:,1)=Aploc(:,1)
+         ABiploc(:,2)=Aploc(:,2)
+         ABiploc(:,3)=Bploc(:,3)
+
+      else
+
+         write(6,*) char(10),'ip must be equal to 1, 2 or 3'
+         goto 11
+
+      end if
+
+
+c   applying the model to all the arrays KEEPING NORMALISED VALUES
+
+      do i=1,Np
+
+         fAloc(i)=model(Aploc(i,1),Aploc(i,2),Aploc(i,3))
+         fBloc(i)=model(Bploc(i,1),Bploc(i,2),Bploc(i,3))
+         fABiploc(i)=model(ABiploc(i,1),ABiploc(i,2),ABiploc(i,3))
+
+      end do
+
+ 11   end subroutine Sobolseqi
+
+
+
+c   subroutine generating and additional Sobol sequence of Np sample points and applying the model to it when all of the ABi arrays are needed : Si's, Vij's & Sij's  
+
+      subroutine Sobolseqij(fAloc,fBloc,fAB1loc,fAB2loc,fAB3loc,Np,
+     &d)
+      implicit none
+
+      integer, intent(in) :: Np,d
+      integer i,j
+      double precision model
+      double precision, dimension(Np), intent(out) :: fAloc,fBloc,
+     &fAB1loc,fAB2loc,fAB3loc
+      double precision, dimension(Np,d) :: Aploc,Bploc,AB1ploc,AB2ploc,
+     &AB3ploc
+
+      external model
+
+      do i=1,Np
+
+         do j=1,d
+
+            Aploc(i,j)=rand()
+            Bploc(i,j)=rand()
+
+         end do
+
+      end do
+
+      AB1ploc(:,1)=Bploc(:,1)
+      AB1ploc(:,2)=Aploc(:,2)
+      AB1ploc(:,3)=Aploc(:,3)
+
+      AB2ploc(:,1)=Aploc(:,1)
+      AB2ploc(:,2)=Bploc(:,2)
+      AB2ploc(:,3)=Aploc(:,3)
+
+      AB3ploc(:,1)=Aploc(:,1)
+      AB3ploc(:,2)=Aploc(:,2)
+      AB3ploc(:,3)=Bploc(:,3)
+
+      do i=1,Np
+
+         fAloc(i)=model(Aploc(i,1),Aploc(i,2),Aploc(i,3))
+         fBloc(i)=model(Bploc(i,1),Bploc(i,2),Bploc(i,3))
+         fAB1loc(i)=model(AB1ploc(i,1),AB1ploc(i,2),AB1ploc(i,3))
+         fAB2loc(i)=model(AB2ploc(i,1),AB2ploc(i,2),AB2ploc(i,3))
+         fAB3loc(i)=model(AB3ploc(i,1),AB3ploc(i,2),AB3ploc(i,3))
+
+      end do
+
+      end subroutine Sobolseqij
+
+
+
+c   subroutine for estimator's computation needing only one of the fABi's (i.e. Vi's or Vti's) : as long as var, var2 or var3 > acc (accuracy goal), the code iterately adds N points to the sample and re-computes the estimator (because of the estimator's additive nature, there is no need to re-run the model for all points in the sample, only for the new ones). The estimator's value is considered to have converged when it's variation in value relative to the previous iteration is found smaller than acc three times in a row
+
+      subroutine convVi(ip,N,d,acc,Vires)
+      implicit none
+
+      integer, intent(in) :: ip,N,d
+      double precision, intent(in) :: acc
+      double precision var,var2,var3,Vip,Vip2,Vip3,Vip4,Vip5,Vi
+      double precision, dimension(N) :: fA,fB,fABi
+      double precision, intent(out) :: Vires
+      integer niter
+
+      external Vi
+
+      niter=0
+      var=1d0
+      var2=1d0
+      var3=1d0
+
+      call Sobolseqi(fA,fB,fABi,ip,N,d)
+      Vip5=Vi(fA,fB,fABi,N)
+
+      do while (var.gt.acc .or. var2.gt.acc .or. var3.gt.acc)
+
+         call Sobolseqi(fA,fB,fABi,ip,N,d)
+
+         Vip2=(Vip5+Vi(fA,fB,fABi,N))/2d0
+
+         call Sobolseqi(fA,fB,fABi,ip,N,d)
+
+         Vip3=(Vip2+Vi(fA,fB,fABi,N))/2d0
+
+         call Sobolseqi(fA,fB,fABi,ip,N,d)
+
+         Vip4=(Vip3+Vi(fA,fB,fABi,N))/2d0
+
+         call Sobolseqi(fA,fB,fABi,ip,N,d)
+
+         Vip5=(Vip4+Vi(fA,fB,fABi,N))/2d0
+
+         var=abs((Vip3-Vip2)/Vip2)
+         var2=abs((Vip4-Vip3)/Vip3)
+         var3=abs((Vip5-Vip4)/Vip4)
+
+         niter=niter+1
+
+      end do
+
+      Vires=Vip5
+
+      write(*,*) '  niter     Vi'
+      write(*,16) niter*1d0,V1
+      write(*,*) char(10)
+
+ 16   format(8(1pe10.2,2x))
+
+      end subroutine convVi
+
+
+
+c   subroutine for computation of the estimators Si
+
+      subroutine convSi(ip,N,d,acc,Vires,Sires,meanAll,varAll)
+      implicit none
+
+      integer, intent(in) :: ip,N,d
+      double precision, intent(in) :: acc
+      double precision var,var2,var3,Vip,Vip2,Vip3,Vip4,Vip5,Sip,Sip2,
+     &Sip3,Sip4,Sip5,Vi
+      double precision, dimension(N) :: fA,fB,fABi,fAB1,fAB2,fAB3
+      double precision, intent(out) :: Vires,Sires,meanAll,varAll
+      integer niter
+
+      external Vi
+
+      niter=0
+      var=1d0
+      var2=1d0
+      var3=1d0
+
+      call Sobolseqi(fA,fB,fABi,ip,N,d)
+      call Sobolseqij(fA,fB,fAB1,fAB2,fAB3,N,d)
+      Vip5=Vi(fA,fB,fABi,N)
+      meanAll=sum(fA+fB+fAB1+fAB2+fAB3)/(5*N)
+      varAll=sum((fA-meanAll)**2+(fB-meanAll)**2+(fAB1
+     &-meanAll)**2+(fAB2-meanAll)**2+(fAB3-meanAll)**2)/(5*N)
+      Sip5=Vip5/varAll
+
+      do while (var.gt.acc .or. var2.gt.acc .or. var3.gt.acc)
+
+         call Sobolseqi(fA,fB,fABi,ip,N,d)
+
+         Vip2=(Vip5+Vi(fA,fB,fABi,N))/2d0
+         meanAll=(meanAll+sum(fA+fB+fAB1+fAB2+fAB3)/(5*N))/2
+         varAll=(varAll+sum((fA-meanAll)**2+(fB-meanAll)**2+(fAB1
+     &   -meanAll)**2+(fAB2-meanAll)**2+(fAB3-meanAll)**2)/(5*N))/2
+         Sip2=Vip2/varAll
+
+         call Sobolseqi(fA,fB,fABi,ip,N,d)
+
+         Vip3=(Vip2+Vi(fA,fB,fABi,N))/2d0
+         meanAll=(meanAll+sum(fA+fB+fAB1+fAB2+fAB3)/(5*N))/2
+         varAll=(varAll+sum((fA-meanAll)**2+(fB-meanAll)**2+(fAB1
+     &   -meanAll)**2+(fAB2-meanAll)**2+(fAB3-meanAll)**2)/(5*N))/2
+         Sip3=Vip3/varAll
+
+         call Sobolseqi(fA,fB,fABi,ip,N,d)
+
+         Vip4=(Vip3+Vi(fA,fB,fABi,N))/2d0
+         meanAll=(meanAll+sum(fA+fB+fAB1+fAB2+fAB3)/(5*N))/2
+         varAll=(varAll+sum((fA-meanAll)**2+(fB-meanAll)**2+(fAB1
+     &   -meanAll)**2+(fAB2-meanAll)**2+(fAB3-meanAll)**2)/(5*N))/2
+         Sip4=Vip4/varAll
+
+         call Sobolseqi(fA,fB,fABi,ip,N,d)
+
+         Vip5=(Vip4+Vi(fA,fB,fABi,N))/2d0
+         meanAll=(meanAll+sum(fA+fB+fAB1+fAB2+fAB3)/(5*N))/2
+         varAll=(varAll+sum((fA-meanAll)**2+(fB-meanAll)**2+(fAB1
+     &   -meanAll)**2+(fAB2-meanAll)**2+(fAB3-meanAll)**2)/(5*N))/2
+         Sip5=Vip5/varAll
+
+         var=abs((Sip3-Sip2)/Sip2)
+         var2=abs((Sip4-Sip3)/Sip3)
+         var3=abs((Sip5-Sip4)/Sip4)
+
+         niter=niter+1
+
+      end do
+
+      Vires=Vip5
+      Sires=Sip5
+
+      write(*,*) 'niter',char(9),char(9),'mean',char(9),
+     &'  variance',char(9),'Vi',char(9),'Si'
+      write(*,16) niter*1d0,meanAll,varAll,Vires,Sires
+      write(*,*) char(10)
+
+ 16   format(8(1pe10.2,2x))
+
+      end subroutine convSi
+
+
+
+c   subroutine for computation of the estimators Sti
+
+      subroutine convSti(ip,N,d,acc,Vtires,Stires,meanAll,varAll)
+      implicit none
+
+      integer, intent(in) :: ip,N,d
+      double precision, intent(in) :: acc
+      double precision var,var2,var3,Vtip,Vtip2,Vtip3,Vtip4,Vtip5,Stip,
+     &Stip2,Stip3,Stip4,Stip5,Vti
+      double precision, dimension(N) :: fA,fB,fABi,fAB1,fAB2,fAB3
+      double precision, intent(out) :: Vtires,Stires,meanAll,varAll
+      integer niter
+
+      external Vti
+
+      niter=0
+      var=1d0
+      var2=1d0
+      var3=1d0
+
+      call Sobolseqi(fA,fB,fABi,ip,N,d)
+      call Sobolseqij(fA,fB,fAB1,fAB2,fAB3,N,d)
+      Vtip5=Vti(fA,fB,fABi,N)
+      meanAll=sum(fA+fB+fAB1+fAB2+fAB3)/(5*N)
+      varAll=sum((fA-meanAll)**2+(fB-meanAll)**2+(fAB1
+     &-meanAll)**2+(fAB2-meanAll)**2+(fAB3-meanAll)**2)/(5*N)
+      Stip5=Vtip5/varAll
+
+      do while (var.gt.acc .or. var2.gt.acc .or. var3.gt.acc)
+
+         call Sobolseqi(fA,fB,fABi,ip,N,d)
+
+         Vtip2=(Vtip5+Vti(fA,fB,fABi,N))/2d0
+         meanAll=(meanAll+sum(fA+fB+fAB1+fAB2+fAB3)/(5*N))/2
+         varAll=(varAll+sum((fA-meanAll)**2+(fB-meanAll)**2+(fAB1
+     &   -meanAll)**2+(fAB2-meanAll)**2+(fAB3-meanAll)**2)/(5*N))/2
+         Stip2=Vtip2/varAll
+
+         call Sobolseqi(fA,fB,fABi,ip,N,d)
+
+         Vtip3=(Vtip2+Vti(fA,fB,fABi,N))/2d0
+         meanAll=(meanAll+sum(fA+fB+fAB1+fAB2+fAB3)/(5*N))/2
+         varAll=(varAll+sum((fA-meanAll)**2+(fB-meanAll)**2+(fAB1
+     &   -meanAll)**2+(fAB2-meanAll)**2+(fAB3-meanAll)**2)/(5*N))/2
+         Stip3=Vtip3/varAll
+
+         call Sobolseqi(fA,fB,fABi,ip,N,d)
+
+         Vtip4=(Vtip3+Vti(fA,fB,fABi,N))/2d0
+         meanAll=(meanAll+sum(fA+fB+fAB1+fAB2+fAB3)/(5*N))/2
+         varAll=(varAll+sum((fA-meanAll)**2+(fB-meanAll)**2+(fAB1
+     &   -meanAll)**2+(fAB2-meanAll)**2+(fAB3-meanAll)**2)/(5*N))/2
+         Stip4=Vtip4/varAll
+
+         call Sobolseqi(fA,fB,fABi,ip,N,d)
+
+         Vtip5=(Vtip4+Vti(fA,fB,fABi,N))/2d0
+         meanAll=(meanAll+sum(fA+fB+fAB1+fAB2+fAB3)/(5*N))/2
+         varAll=(varAll+sum((fA-meanAll)**2+(fB-meanAll)**2+(fAB1
+     &   -meanAll)**2+(fAB2-meanAll)**2+(fAB3-meanAll)**2)/(5*N))/2
+         Stip5=Vtip5/varAll
+
+         var=abs((Stip3-Stip2)/Stip2)
+         var2=abs((Stip4-Stip3)/Stip3)
+         var3=abs((Stip5-Stip4)/Stip4)
+
+         niter=niter+1
+
+      end do
+
+      Vtires=Vtip5
+      Stires=Stip5
+
+      write(*,*) 'niter',char(9),char(9),'mean',char(9),
+     &'  variance',char(9),'Vti',char(9),'Sti'
+      write(*,16) niter*1d0,meanAll,varAll,Vtires,Stires
+      write(*,*) char(10)
+
+ 16   format(8(1pe10.2,2x))
+
+      end subroutine convSti
+
+
+
+c   subroutine for computation of the estimators Sij (is it really useful since we deduce them from the other estimators (Si's,Sti's) ?
+
+      subroutine convSij(ip,jp,N,d,acc,Vijres,Sijres,meanAll,varAll)
+      implicit none
+
+      integer, intent(in) :: ip,jp,N,d
+      double precision, intent(in) :: acc
+      double precision var,var2,var3,Vijp,Vijp2,Vijp3,Vijp4,Vijp5,Sijp,
+     &Sijp2,Sijp3,Sijp4,Sijp5,Vij,lz
+      double precision :: fA(N),fB(N)
+      double precision, pointer :: fAB1(:),fAB2(:),fAB3(:)
+      double precision, target :: fABi(N),fABj(N),fABk(N)
+      double precision, intent(out) :: Vijres,Sijres,meanAll,varAll
+      integer niter
+
+      external Vij
+
+      niter=0
+      var=1d0
+      var2=1d0
+      var3=1d0
+      lz=5E-3
+
+      if (ip==1) then
+         fAB1=>fABi
+         if (jp==2) then
+            fAB2=>fABj
+            fAB3=>fABk
+         else if (jp==3) then
+            fAB3=>fABj
+            fAB2=>fABk
+         else
+            write(*,*) char(10),'(i,j) must be (1,2), (1,3) or (2,3)'
+            goto 10
+         end if
+      else if (ip==2) then
+         fAB2=>fABi
+         fAB3=>fABj
+         fAB1=>fABk
+      else
+         write(*,*) char(10),'(i,j) must be (1,2), (1,3) or (2,3)'
+         goto 10
+      end if
+
+      call internalSij(N,d,fA,fB,fAB1,fAB2,fAB3,meanAll,varAll)
+      Vijp5=Vij(fA,fB,fABi,fABj,fABk,N)
+      Sijp5=Vijp5/varAll
+
+      do while (var.gt.acc .or. var2.gt.acc .or. var3.gt.acc)
+
+         call internalSij(N,d,fA,fB,fAB1,fAB2,fAB3,meanAll,varAll)
+         Vijp2=(Vijp5+Vij(fA,fB,fABi,fABj,fABk,N))/2d0
+         Sijp2=Vijp2/varAll
+
+         call internalSij(N,d,fA,fB,fAB1,fAB2,fAB3,meanAll,varAll)
+         Vijp3=(Vijp2+Vij(fA,fB,fABi,fABj,fABk,N))/2d0
+         Sijp3=Vijp3/varAll
+
+         call internalSij(N,d,fA,fB,fAB1,fAB2,fAB3,meanAll,varAll)
+         Vijp4=(Vijp3+Vij(fA,fB,fABi,fABj,fABk,N))/2d0
+         Sijp4=Vijp4/varAll
+
+         call internalSij(N,d,fA,fB,fAB1,fAB2,fAB3,meanAll,varAll)
+         Vijp5=(Vijp4+Vij(fA,fB,fABi,fABj,fABk,N))/2d0
+         Sijp5=Vijp5/varAll
+
+         var=abs((Sijp3-Sijp2)/Sijp2)
+         var2=abs((Sijp4-Sijp3)/Sijp3)
+         var3=abs((Sijp5-Sijp4)/Sijp4)
+
+         niter=niter+1
+
+         if (abs(Sijp2).lt.lz .and. abs(Sijp3).lt.lz .and. 
+     &   abs(Sijp4).lt.lz .and. abs(Sijp5).lt.lz) then
+
+            write(6,*) 'Estimator is less than',real(lz),', possibly 0'
+            goto 19
+
+         end if
+            
+
+      end do
+
+ 19   Vijres=Vijp5
+      Sijres=Sijp5
+
+      write(*,*) 'niter',char(9),char(9),'mean',char(9),
+     &'  variance',char(9),'Vij',char(9),'Sij'
+      write(*,16) niter*1d0,meanAll,varAll,Vijres,Sijres
+      write(*,*) char(10)
+
+ 16   format(8(1pe10.2,2x))
+
+ 10   end subroutine convSij
+
+
+c   to avoid writing this block 4 times in the convSij subroutine
+
+      subroutine internalSij(N,d,fA,fB,fAB1,fAB2,fAB3,meanAll,varAll)
+      implicit none
+
+      integer, intent(in) :: N,d
+      double precision, intent(out), dimension(N) :: fA,fB,fAB1,fAB2,
+     &fAB3
+      double precision, intent(inout) :: meanAll,varAll
+
+      call Sobolseqij(fA,fB,fAB1,fAB2,fAB3,N,d)
+
+      meanAll=(meanAll+sum(fA+fB+fAB1+fAB2+fAB3)/(5*N))/2
+      varAll=(varAll+sum((fA-meanAll)**2+(fB-meanAll)**2+(fAB1-meanAll)
+     &**2+(fAB2-meanAll)**2+(fAB3-meanAll)**2)/(5*N))/2
+
+      end subroutine internalSij
+
+
+
+      end program stat_func_test
+
+
+
+c***********************************************************************
+
+
+
+c   function norm that normalises a variable xmin<x<xmax --> 0<xnorm<xmax
+
+      double precision function norm(x,xmin,xmax)
+      implicit none
+
+      double precision x,xmin,xmax
+
+      norm=(x-xmin)/(xmax-xmin)
+
+      end
+
+
+
+c   function revnorm that transforms a normalised variable into a real one 0<xnorm<1 --> xmin<x<xmax
+
+      double precision function revnorm(xnorm,xmin,xmax)
+      implicit none
+
+      double precision xnorm,xmin,xmax
+
+      revnorm=(xmax-xmin)*xnorm+xmin
+
+      end
+
+
+
+c   subroutine to print the content of 5 vectors of same length in columns
+
+      subroutine print5vector(v1,v2,v3,v4,v5,length)
+      implicit none
+
+      integer length,i
+      double precision, dimension (length) :: v1,v2,v3,v4,v5
+
+      write(6,*) char(10)
+
+      do i=1,length
+
+         write(*,13) v1(i),v2(i),v3(i),v4(i),v5(i)
+
+      end do
+
+      write(6,*) char(10)
+
+ 13   format(' ',5f10.4)
+
+      return
+
+      end
+
+
+
+c   subroutine to print the content of a 2D-array in readable form
+
+      subroutine printarray(array,dim1,dim2)
+      implicit none
+
+      integer dim1,dim2,i,j
+      double precision, dimension (dim1,dim2) :: array
+
+      write(6,*) char(10)
+
+      do i=1,dim1
+
+         do j=1,dim2
+
+            if (j<dim2) then
+
+               write(*,12,advance="no") array(i,j)
+
+            else
+
+               write(*,12) array(i,j)
+
+            end if
+
+         end do
+
+      end do
+
+      write(6,*) char(10)
+
+ 12   format(' ',f7.4)
+
+      return
+
+      end
+
+
+
+c   function evaluating the 1st-order sensitivity index (or main effect index) Vi (not normalised by the variance of the whole model)
+
+      double precision function Vi(fA,fB,fABi,N)
+      implicit none
+
+      integer N,i
+      double precision res
+      double precision, dimension (N) :: fA,fB,fABi
+
+      res=0d0
+
+      do i=1,N
+
+         res=res+1d0/N*fB(i)*(fABi(i)-fA(i))
+
+      end do
+
+      Vi=res
+
+      end
+
+
+
+c   function evaluating the 2nd-order sensitivity index (or interaction-effect index) Vij (not normalised by the variance of the whole model)
+
+      double precision function Vij(fA,fB,fABi,fABj,fABk,N)
+      implicit none
+
+      integer N
+      double precision Vi,Vti
+      double precision, dimension (N) :: fA,fB,fABi,fABj,fABk
+
+      external Vi,Vti
+
+      Vij=1d0/2d0*(-Vi(fA,fB,fABi,N)-Vi(fA,fB,fABj,N)+Vi(fA,fB,fABk,N)+
+     &Vti(fA,fB,fABi,N)+Vti(fA,fB,fABj,N)-Vti(fA,fB,fABk,N))
+
+      end
+
+
+
+c   function evaluating the total-order index (or total-effect index) Vti (not normalised by the variance of the whole model)
+
+      double precision function Vti(fA,fB,fABi,N)
+      implicit none
+
+      integer N,i
+      double precision res
+      double precision, dimension (N) :: fA,fB,fABi
+
+      res=0d0
+
+      do i=1,N
+
+         res=res+1d0/(2d0*N)*(fA(i)-fABi(i))**2
+
+      end do
+
+      Vti=res
+
+      end
+
+
+c   toy-model to apply to the created sample and to check the estimators behaviour
+
+      double precision function model(a,b,c)
+      implicit none
+
+      double precision a,b,c
+
+      model=a*b*c
+
+      end

@@ -1,0 +1,15 @@
+      double precision function F40func(ctheta)
+         use shared_vars
+         implicit none
+         double precision, intent(in) :: ctheta
+         double precision Q
+         double precision M,pi,R0Jpsi,phid
+         double precision F40
+         COMMON /Q/Q
+         pi=dacos(-1.d0)
+         M=3.0969d0
+         R0Jpsi=sqrt(0.81d0)
+         phid=0d0
+         F40=<* F402J\[Psi]\[Alpha] *>
+         F40func=F40
+      end function F40func

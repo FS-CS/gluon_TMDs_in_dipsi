@@ -1,0 +1,18 @@
+
+      program pointer_test
+      implicit none
+
+      integer, pointer :: pt
+      integer, target :: x=34
+
+      pt => x
+
+      write(*,*) x,pt
+
+      x=40
+
+      write(*,*) x,pt
+
+      pt=6
+
+      write(*,*) x,pt

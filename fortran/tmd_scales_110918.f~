@@ -1,0 +1,40 @@
+
+      double precision function btstar(bt)
+      implicit none
+
+      double precision bt
+
+      btstar = bt/(sqrt(1d0+bt**2/btmax**2))
+
+      end
+
+
+      double precision function mub(bt)
+      implicit none
+
+      double precision bt
+
+      mub = b0/btstar(bt)
+
+      end
+
+
+      double precision function mubfrozen(bt)
+      implicit none
+
+      double precision bt
+
+      mubfrozen = Q*b0/sqrt(Q**2*(btstar(bt))**2+b0**2)
+
+      end
+
+
+      double precision function alphas(bt)
+      implicit none
+
+      double precision bt
+
+      alphas = 4d0*pi/((11d0-2d0/3d0*nf)*log(mubfrozen(bt)**2
+     &/Lambda**2))
+
+      end
